@@ -1,0 +1,37 @@
+`timescale 1ns / 1ps
+// 4-bit synchronous counter mod 3
+module LS163_mod3 (
+    input wire CLK,
+    input wire RST, //synchronous reset, active low, when 0, Q will become 0000 on the next clock
+    input wire LOAD, // parallel load, means new PLI, active low
+    input wire ENP, //nust be 1 for the counter to be allowed to count
+    input wire ENT, // must be 1 for this given stage to increment and produce a carry bit
+    input wire [3:0] D, //Input nibble, current value 
+    output reg [3:0] Q, //Output nibble, next value of Q
+    output wire CARRY //The Carry Bit
+);
+    reg [3:0] next_Q; // Temp holding spot for what Q will be next clcok tick
+    wire [3:0] inc_Q = Q + 4'b0001; //Q value incremented by one
+    wire is_two = (Q == 4'b0010); // Pretty much a variable assigned to a boolean evaluation, checking to see if Q == 2
+
+    always @* begin
+        if (!RST)
+            next_Q = 4'b0000; // If RST is low, prepare to reset to 0000
+        else if (!LOAD) // ENABLE = 1, The Next Q values = Load Value
+            next_Q = D; //If LOAD is low, prepare to load D into Q
+        else if (ENP && ENT) begin
+            if (is_two)
+                next_Q = 4'b0000; // roll over, 2 goes to 0
+            else
+                next_Q = inc_Q; // normal count, basically Q = Q++
+        end else
+            next_Q = Q; //hold value, pretty useful in larger time rep that depend on carry bits from lesser time bits
+    end
+
+    always @(posedge CLK) begin
+        Q <= next_Q; //Refeeds back into input 
+    end
+
+    assign CARRY = is_two && ENP && ENT; //If Bits are at 2 and you can increment in general and also carry
+
+endmodule
