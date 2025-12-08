@@ -1,0 +1,138 @@
+`timescale 1ns / 1ps
+
+module TimeClock_24h_PL (
+    input wire CLK,
+    input wire RST, // external reset, active low
+    input wire LOAD, // global parallel load, active low
+
+// Parallel-load data for each BCD digit
+    input wire [3:0] H1_D, // Hours MSB Input
+    input wire [3:0] H0_D, // Hours LSB Input
+    input wire [3:0] M1_D, // Minutes MSB Input
+    input wire [3:0] M0_D, // Minutes LSB Input
+    input wire [3:0] S1_D, // Seconds MSB Input
+    input wire [3:0] S0_D, // Seconds LSB Input
+
+// Current time outputs
+    output wire [3:0] H1, // Hours MSB Output
+    output wire [3:0] H0, // Hours LSB Output
+    output wire [3:0] M1, // Minutes MSB Output
+    output wire [3:0] M0, // Minutes LSB Output
+    output wire [3:0] S1, // Seconds MSB Output
+    output wire [3:0] S0 // Seconds LSB Output
+);
+
+// Internal wires for Q and CARRY
+    wire [3:0] qH1; // Hours MSB Q Value
+    wire [3:0] qH0; // Hours LSB Q Value
+    wire [3:0] qM1; // Minutes MSB Output
+    wire [3:0] qM0; // Minutes LSB Q Value
+    wire [3:0] qS1; // Seconds MSB Q Value
+    wire [3:0] qS0; // Seconds LSB Q Value
+    wire cS0; // Seconds LSB Carry bit
+    wire cS1; // Seconds MSB Carry bit
+    wire cM0; // Minutes LSB Carry bit
+    wire cM1; // Minutes MSB Carry bit
+    wire cH0; // Hours LSB Carry bit
+    wire cH1_unused; // Hours MSB Carry bit, useless value used to complete substantiation 
+
+// End of Day individual and total bit values
+    wire is_H1_2 = (qH1 == 4'b0010);
+    wire is_H0_3 = (qH0 == 4'b0011);
+    wire is_M1_5 = (qM1 == 4'b0101);
+    wire is_M0_9 = (qM0 == 4'b1001);
+    wire is_S1_5 = (qS1 == 4'b0101);
+    wire is_S0_9 = (qS0 == 4'b1001);
+
+    wire end_of_day = is_H1_2 && is_H0_3 && is_M1_5 && is_M0_9 && is_S1_5 && is_S0_9; //Basically a boolean evaluation to see if all are true
+    
+    // Global synchronous clear:
+    // active when external reset is low
+    // or when we've reached 23:59:59
+    wire CLOSING_TIME_global = RST & ~end_of_day;
+
+
+//Seconds (S1, S0) 
+    //S0 using mod 10
+    LS163_mod10 u_S0 (
+        .CLK(CLK),
+        .RST(CLOSING_TIME_global),
+        .LOAD(LOAD),
+        .ENP(1'b1),
+        .ENT(1'b1),
+        .D(S0_D),
+        .Q(qS0),
+        .CARRY(cS0)
+    );
+
+    //S0 using mod 6
+    LS163_mod6 u_S1 (
+        .CLK(CLK),
+        .RST(CLOSING_TIME_global),
+        .LOAD(LOAD),
+        .ENP(cS0),
+        .ENT(1'b1),
+        .D(S1_D),
+        .Q(qS1),
+        .CARRY(cS1)
+    );
+
+//Minutes (M0, M1)
+    //M0 using mod 10
+    LS163_mod10 u_M0 (
+        .CLK(CLK),
+        .RST(CLOSING_TIME_global),
+        .LOAD(LOAD),
+        .ENP(cS1),
+        .ENT(1'b1),
+        .D(M0_D),
+        .Q(qM0),
+        .CARRY(cM0)
+    );
+
+    //M1 using mod 6
+    LS163_mod6 u_M1 (
+        .CLK(CLK),
+        .RST(CLOSING_TIME_global),
+        .LOAD(LOAD),
+        .ENP(cM0),
+        .ENT(1'b1),
+        .D(M1_D),
+        .Q(qM1),
+        .CARRY(cM1)
+    );
+
+//Hours (H1, H0)
+    // H0, using mod 10
+    LS163_mod10 u_H0 (
+        .CLK(CLK),
+        .RST(CLOSING_TIME_global),
+        .LOAD(LOAD),
+        .ENP(cM1),
+        .ENT(1'b1),
+        .D(H0_D),
+        .Q(qH0),
+        .CARRY(cH0)
+    );
+
+    //H1, using mod 3
+    LS163_mod3 u_H1 (
+        .CLK(CLK),
+        .RST(CLOSING_TIME_global),
+        .LOAD(LOAD),
+        .ENP(cH0),
+        .ENT(1'b1),
+        .D(H1_D),
+        .Q(qH1),
+        .CARRY(cH1_unused)
+    );
+
+    // Connect internal Q's to outputs
+    assign S0 = qS0;
+    assign S1 = qS1;
+    assign M0 = qM0;
+    assign M1 = qM1;
+    assign H0 = qH0;
+    assign H1 = qH1;
+
+endmodule
