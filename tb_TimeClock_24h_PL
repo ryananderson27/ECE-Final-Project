@@ -1,0 +1,96 @@
+`timescale 1ns / 1ps
+
+module tb_TimeClock_24h_PL;
+
+    reg CLK;
+    reg RST; // active low
+    reg LOAD; // active low
+
+    reg [3:0] H1_D;
+    reg [3:0] H0_D;
+    reg [3:0] M1_D;
+    reg [3:0] M0_D;
+    reg [3:0] S1_D;
+    reg [3:0] S0_D;
+
+    // DUT outputs
+    wire [3:0] H1;
+    wire [3:0] H0;
+    wire [3:0] M1;
+    wire [3:0] M0;
+    wire [3:0] S1;
+    wire [3:0] S0;
+
+    // Instantiate DUT
+    TimeClock_24h_PL dut (
+        .CLK(CLK),
+        .RST(RST),
+        .LOAD(LOAD),
+        .H1_D(H1_D),
+        .H0_D(H0_D),
+        .M1_D(M1_D),
+        .M0_D(M0_D),
+        .S1_D(S1_D),
+        .S0_D(S0_D),
+        .H1(H1),
+        .H0(H0),
+        .M1(M1),
+        .M0(M0),
+        .S1(S1),
+        .S0(S0)
+    );
+
+    initial CLK = 1'b0;
+    always #5 CLK = ~CLK;
+
+    initial begin
+        RST = 1'b0; // assert reset (active low)
+        LOAD = 1'b1; // no load yet
+
+        H1_D = 4'd0;
+        H0_D = 4'd0;
+        M1_D = 4'd0;
+        M0_D = 4'd0;
+        S1_D = 4'd0;
+        S0_D = 4'd0;
+
+        #20;
+        @(posedge CLK);
+        RST = 1'b1; // release reset, start counting from 00:00:00
+        repeat (10) @(posedge CLK);
+        @(posedge CLK); // clean edge before changing D and LOAD
+
+        H1_D = 4'd1; // hours tens = 1
+        H0_D = 4'd2; // hours ones = 2
+        M1_D = 4'd3; // minutes tens = 3
+        M0_D = 4'd4; // minutes ones = 4
+        S1_D = 4'd5; // seconds tens = 5
+        S0_D = 4'd0; // seconds ones = 0
+
+        LOAD = 1'b0;
+        @(posedge CLK); // load 12:34:50 here
+        LOAD = 1'b1; // now counting from 12:34:50
+
+        // Run some more after first load
+        repeat (50) @(posedge CLK);
+
+        @(posedge CLK);
+
+        H1_D = 4'd2; // hours tens = 2
+        H0_D = 4'd3; // hours ones = 3
+        M1_D = 4'd5; // minutes tens = 5
+        M0_D = 4'd9; // minutes ones = 9
+        S1_D = 4'd5; // seconds tens = 5
+        S0_D = 4'd0; // seconds ones = 0
+
+        LOAD = 1'b0;
+        @(posedge CLK); // load 23:59:50 here
+        LOAD = 1'b1; // now counting from 23:59:50
+
+        // Run some more after second load
+        repeat (200) @(posedge CLK);
+
+        $finish;
+    end
+
+endmodule
