@@ -1,0 +1,299 @@
+`timescale 1ns / 1ps
+
+module tb_ClockWithAlarmTop;
+
+//Inputs
+    reg CLK;
+    reg RST; // active low
+    reg LOAD; // active low
+
+// Clock parallel-load digits
+    reg [3:0] H1_D;
+    reg [3:0] H0_D;
+    reg [3:0] M1_D;
+    reg [3:0] M0_D;
+    reg [3:0] S1_D;
+    reg [3:0] S0_D;
+
+// Alarm control inputs
+    reg Enable_alarm; // 1 = we are changing the alarm time
+    reg A_and_B; // toggles alarm_active (T FF)
+    reg B; // snooze button
+    reg switch;
+
+// Alarm time digits
+    reg [3:0] H1_A;
+    reg [3:0] H0_A;
+    reg [3:0] M1_A;
+    reg [3:0] M0_A;
+    reg [3:0] S1_A;
+    reg [3:0] S0_A;
+
+//Outputs
+    wire [3:0] H1;
+    wire [3:0] H0;
+    wire [3:0] M1;
+    wire [3:0] M0;
+    wire [3:0] S1;
+    wire [3:0] S0;
+
+    wire [3:0] H1_A1;
+    wire [3:0] H0_A1;
+    wire [3:0] M1_A1;
+    wire [3:0] M0_A1;
+    wire [3:0] S1_A1;
+    wire [3:0] S0_A1;
+
+    wire alarm_out;
+    wire alarm_active;
+
+    ClockWithAlarmTop dut (
+        .CLK(CLK),
+        .RST(RST),
+        .LOAD(LOAD),
+        .H1_D(H1_D),
+        .H0_D(H0_D),
+        .M1_D(M1_D),
+        .M0_D(M0_D),
+        .S1_D(S1_D),
+        .S0_D(S0_D),
+        .Enable_alarm(Enable_alarm),
+        .A_and_B(A_and_B),
+        .B(B),
+        .switch(switch),
+        .H1_A(H1_A),
+        .H0_A(H0_A),
+        .M1_A(M1_A),
+        .M0_A(M0_A),
+        .S1_A(S1_A),
+        .S0_A(S0_A),
+        .H1(H1),
+        .H0(H0),
+        .M1(M1),
+        .M0(M0),
+        .S1(S1),
+        .S0(S0),
+        .H1_A1(H1_A1),
+        .H0_A1(H0_A1),
+        .M1_A1(M1_A1),
+        .M0_A1(M0_A1),
+        .S1_A1(S1_A1),
+        .S0_A1(S0_A1),
+        .alarm_out(alarm_out),
+        .alarm_active(alarm_active)
+    );
+
+    initial CLK = 1'b0;
+    always  #5 CLK = ~CLK;
+
+   task reset_dut;
+    begin
+        RST = 1'b0; // hold reset active 
+        LOAD = 1'b1;
+        Enable_alarm = 1'b0;
+        A_and_B = 1'b0;
+        B = 1'b0;
+        switch = 1'b1;
+
+        H1_D = 0; 
+        H0_D = 0;
+        M1_D = 0;
+        M0_D = 0;
+        S1_D = 0; 
+        S0_D = 0;
+
+        H1_A = 0; 
+        H0_A = 0;
+        M1_A = 0; 
+        M0_A = 0;
+        S1_A = 0; 
+        S0_A = 0;
+
+        @(posedge CLK);
+        @(posedge CLK);
+        RST = 1'b1; // release reset
+        @(posedge CLK);
+    end
+    endtask
+
+task alarm_switch_off;
+    begin
+        switch = 1'b0;
+    end
+endtask
+
+task alarm_switch_on;
+    begin
+        switch = 1'b1;
+    end
+endtask
+// Load the clock time
+    task load_time(
+        input [3:0] h1, 
+        input [3:0] h0,
+        input [3:0] m1, 
+        input [3:0] m0,
+        input [3:0] s1,
+        input [3:0] s0
+    );
+    begin
+        H1_D = h1; 
+        H0_D = h0;
+        M1_D = m1; 
+        M0_D = m0;
+        S1_D = s1; 
+        S0_D = s0;
+        LOAD = 1'b0;
+        @(posedge CLK);
+        LOAD = 1'b1;
+    end
+    endtask
+
+// Program alarm time
+    task program_alarm(
+        input [3:0] h1,
+        input [3:0] h0,
+        input [3:0] m1, 
+        input [3:0] m0,
+        input [3:0] s1, 
+        input [3:0] s0
+    );
+    begin
+        H1_A = h1; 
+        H0_A = h0;
+        M1_A = m1; 
+        M0_A = m0;
+        S1_A = s1; 
+        S0_A = s0;
+
+        Enable_alarm = 1'b1;
+        @(posedge CLK);
+        Enable_alarm = 1'b0;
+    end
+    endtask
+
+// Toggle alarm_active (A_and_B)
+    task toggle_AandB;
+    begin
+        A_and_B = 1'b1;
+        @(posedge CLK);
+        A_and_B = 1'b0;
+    end
+    endtask
+
+// Press B (snooze/ack)
+    task toggle_B;
+    begin
+        B = 1'b1;
+        @(posedge CLK);
+        B = 1'b0;
+    end
+    endtask
+
+// Run for n cycles
+    task step_n(input integer n);
+        integer i;
+    begin
+        for (i = 0; i < n; i = i + 1)
+            @(posedge CLK);
+    end
+    endtask
+
+//Scenarios
+
+    // SCENARIO 1:
+    // Set an alarm, enable alarm, let it go off, then hit B.
+    task scenario1_alarm_and_B;
+    begin
+        reset_dut;
+        
+        // Start at 00:00:00
+        load_time(4'd0,4'd0,4'd0,4'd0,4'd0,4'd0);
+
+        // Check Alarm Time
+        alarm_switch_off;
+
+        // Program alarm for 00:00:05
+        program_alarm(4'd0,4'd0,4'd0,4'd0,4'd0,4'd5);
+
+        // Let clock run ~6 seconds
+        step_n(6);
+
+        // Press B to stop alarm and latch B_latched
+        alarm_switch_on;
+    end
+    endtask
+
+    // SCENARIO 2:
+    // Midnight clears B_latched.
+    task scenario2_midnight_clears_B;
+    begin
+        reset_dut;
+
+        // Simulate B already latched by pressing B first
+        toggle_B;
+
+        // Now force time to 23:59:58 and run into midnight
+        load_time(4'd2,4'd3,4'd5,4'd9,4'd5,4'd8);
+        step_n(3);
+    end
+    endtask
+
+    // SCENARIO 3:
+    // Set new alarm, but user hits AandB (disables alarm_active) before alarm time.
+    task scenario3_AandB_before_alarm;
+    begin
+        reset_dut;
+
+        // Start from 00:00:00
+        load_time(4'd0,4'd0,4'd0,4'd0,4'd0,4'd0);
+
+        // Turn alarm Display on
+        toggle_AandB;
+
+        // Program alarm for 00:01:00 (example)
+        program_alarm(4'd0,4'd0,4'd0,4'd1,4'd0,4'd0);
+
+        // Immediately turn alarm display OFF before time is reached
+        toggle_AandB;
+
+        // Let time run; alarm_out should never assert
+        step_n(70);
+    end
+    endtask
+
+    // SCENARIO 4:
+    // Alarm is enabled, rings, then user toggles A&B OFF after it goes off.
+    task scenario4_AandB_after_alarm;
+    begin
+        reset_dut;
+
+        // Start at 00:00:00
+        load_time(4'd0,4'd0,4'd0,4'd0,4'd0,4'd0);
+
+        // Turn alarm system ON
+        alarm_switch_on;
+
+        // Program alarm for 00:00:03
+        program_alarm(4'd0,4'd0,4'd0,4'd0,4'd0,4'd3);
+
+        // Let time reach alarm time
+        step_n(4);
+
+        // Now toggle B to turn alarm_out off
+        toggle_B;
+    end
+    endtask
+
+// ---------------- Main initial block ----------------
+    initial begin
+
+        scenario1_alarm_and_B();
+        scenario2_midnight_clears_B();
+        scenario3_AandB_before_alarm();
+        scenario4_AandB_after_alarm();
+
+        $finish;
+    end
+
+endmodule
