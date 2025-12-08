@@ -1,0 +1,175 @@
+`timescale 1ns / 1ps
+
+module ClockWithAlarmTop (
+    input wire CLK,
+    input wire RST, // global reset, active low
+    input wire LOAD, // clock time parallel load, active low
+    
+// Parallel-load data for each BCD digit
+    input wire [3:0] H1_D, // Hours MSB Input
+    input wire [3:0] H0_D, // Hours LSB Input
+    input wire [3:0] M1_D, // Minutes MSB Input
+    input wire [3:0] M0_D, // Minutes LSB Input
+    input wire [3:0] S1_D, // Seconds MSB Input
+    input wire [3:0] S0_D, // Seconds LSB Input
+//Physical Inputs
+    input wire Enable_alarm, // 1 = we are changing the alarm time
+    input wire A_and_B, // single signal for "A and B" from diagram
+    input wire B, //Defacto Snooze Button
+    input wire switch, //Manual switch for Alarm being on
+
+    // New alarm time digits
+    input wire [3:0] H1_A, // Hours MSB alarm
+    input wire [3:0] H0_A, // Hours LSB alarm
+    input wire [3:0] M1_A, // Minutes MSB alarm
+    input wire [3:0] M0_A, // Minutes LSB alarm
+    input wire [3:0] S1_A, // Seconds MSB alarm
+    input wire [3:0] S0_A, // Seconds LSB  alarm
+
+    // Current time outputs
+    output wire [3:0] H1, // Hours MSB Output
+    output wire [3:0] H0, // Hours LSB Output
+    output wire [3:0] M1, // Minutes MSB Output
+    output wire [3:0] M0, // Minutes LSB Output
+    output wire [3:0] S1, // Seconds MSB Output
+    output wire [3:0] S0, // Seconds LSB Output
+    
+    output wire [3:0] H1_A1, // Hours MSB alarm time
+    output wire [3:0] H0_A1, // Hours LSB alarm time
+    output wire [3:0] M1_A1, // Minutes MSB alarm time
+    output wire [3:0] M0_A1, // Minutes LSB alarm time
+    output wire [3:0] S1_A1, // Seconds MSB alarm time
+    output wire [3:0] S0_A1, // Seconds LSB  alarm time
+
+   
+    output wire alarm_out, // Is Alarm Happening
+    output reg alarm_active // Is Alarm being actively displayed
+);
+
+// Instantiations
+    TimeClock_24h_PL clock24 (
+        .CLK(CLK),
+        .RST(RST),
+        .LOAD(LOAD),
+        .H1_D(H1_D),
+        .H0_D(H0_D),
+        .M1_D(M1_D),
+        .M0_D(M0_D),
+        .S1_D(S1_D),
+        .S0_D(S0_D),
+        .H1(H1),
+        .H0(H0),
+        .M1(M1),
+        .M0(M0),
+        .S1(S1),
+        .S0(S0)
+    );
+
+ 
+    //Output of Matching Alarm Time to Current Time
+    wire match_H1; 
+    wire match_H0;
+    wire match_M1;
+    wire match_M0;
+    wire match_S1; 
+    wire match_S0;
+
+    // H1
+    AlarmDigit4 u_H1_alarm (
+        .CLK(CLK),
+        .RST(RST),
+        .Enable(Enable_alarm),
+        .new_digit(H1_A),
+        .current_digit(H1),
+        .match(match_H1)
+    );
+
+    // H0
+    AlarmDigit4 u_H0_alarm (
+        .CLK(CLK),
+        .RST(RST),
+        .Enable(Enable_alarm),
+        .new_digit(H0_A),
+        .current_digit(H0),
+        .match(match_H0)
+    );
+
+    // M1
+    AlarmDigit4 u_M1_alarm (
+        .CLK(CLK),
+        .RST(RST),
+        .Enable(Enable_alarm),
+        .new_digit(M1_A),
+        .current_digit(M1),
+        .match(match_M1)
+    );
+
+    // M0
+    AlarmDigit4 u_M0_alarm (
+        .CLK(CLK),
+        .RST(RST),
+        .Enable(Enable_alarm),
+        .new_digit(M0_A),
+        .current_digit(M0),
+        .match(match_M0)
+    );
+
+    // S1
+    AlarmDigit4 u_S1_alarm (
+        .CLK(CLK),
+        .RST(RST),
+        .Enable(Enable_alarm),
+        .new_digit(S1_A),
+        .current_digit(S1),
+        .match(match_S1)
+    );
+
+    // S0 digit
+    AlarmDigit4 u_S0_alarm (
+        .CLK(CLK),
+        .RST(RST),
+        .Enable(Enable_alarm),
+        .new_digit(S0_A),
+        .current_digit(S0),
+        .match(match_S0)
+    );
+
+    // All 6 digits (24 bits) match when every match_* is 1
+    wire all_match = match_H1 & match_H0 & match_M1 & match_M0 & match_S1 & match_S0;
+    
+    // Detect total time == 00:00:00
+    wire at_midnight = (H1 == 4'd0) && (H0 == 4'd0) && (M1 == 4'd0) && (M0 == 4'd0) && (S1 == 4'd0) && (S0 == 4'd0);
+    reg B_latched;
+    always @(posedge CLK or negedge RST) begin
+        if (!RST)
+            B_latched <= 1'b0;// reset clears B_latched
+        else if (at_midnight)
+            B_latched <= 1'b0;// clear once time is 00:00:00
+        else if (B)
+            B_latched <= 1'b1;// when B is activated, latch to 1
+        // else: hold previous B_latched
+    end
+    
+    // T flip-flop for alarm_active, toggled by A_and_B
+     always @(posedge CLK or negedge RST) begin
+        if (!RST)
+            alarm_active <= 1'b0; // alarm off after reset
+        else if (A_and_B)
+            alarm_active <= ~alarm_active; // toggle on each A_and_B toggle
+        // else: hold previous alarm_active
+    end
+
+    // NOT currently changing alarm time (Enable_alarm = 0)
+    // B can't be hit 
+    // all 6 digits match
+    assign alarm_out = ~alarm_active & ~B_latched & ~Enable_alarm & all_match & switch;
+
+    //Assign current alarm time to output to display
+    assign H1_A1 = H1_A; 
+    assign H0_A1 = H0_A;
+    assign M1_A1 = M1_A;
+    assign M0_A1 = M0_A;
+    assign S1_A1 = S1_A;
+    assign S0_A1 = S0_A;
+    
+endmodule
