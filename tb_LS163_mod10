@@ -1,0 +1,85 @@
+`timescale 1ns / 1ps
+
+module tb_LS163_mod10;
+
+    // Testbench signals
+    reg        CLK;
+    reg        CLR_n;
+    reg        LOAD_n;
+    reg        ENP;
+    reg        ENT;
+    reg  [3:0] D;
+    wire [3:0] Q;
+    wire       CARRY;
+
+    // DUT = Device Under Test
+    LS163_mod10 dut (
+        .CLK   (CLK),
+        .CLR_n (CLR_n),
+        .LOAD_n(LOAD_n),
+        .ENP   (ENP),
+        .ENT   (ENT),
+        .D     (D),
+        .Q     (Q),
+        .CARRY (CARRY)
+    );
+
+    // Clock generation: 10 ns period (100 MHz)
+    initial CLK = 1'b0;
+    always #5 CLK = ~CLK;
+
+    // Stimulus
+    initial begin
+        // Initial conditions
+        CLR_n  = 1'b1;   // not clearing yet
+        LOAD_n = 1'b1;   // not loading yet
+        ENP    = 1'b0;   // disabled
+        ENT    = 1'b0;   // disabled
+        D      = 4'b0000;
+
+        // Optional: set up waveform dump for GTKWave/etc.
+        // $dumpfile("ls163_mod10_tb.vcd");
+        // $dumpvars(0, tb_LS163_mod10);
+
+        // Small delay before starting
+        #2;
+
+        // 1) Synchronous clear: drive CLR_n low, then high on a clock edge
+        $display("\n--- Synchronous clear to 0000 ---");
+        CLR_n = 1'b0;   // request clear
+        @(posedge CLK); // on this clock, Q should go to 0000
+        CLR_n = 1'b1;   // release clear
+
+        // 2) Enable counting and let it roll through 0..9..0
+        $display("\n--- Enable counting, watch mod-10 rollover and CARRY ---");
+        ENP = 1'b1;
+        ENT = 1'b1;
+
+        // Let it count for more than 10 cycles to see rollover at 9 -> 0
+        repeat (12) @(posedge CLK);
+
+        // 3) Parallel load a custom value, e.g., 0101 (5)
+        $display("\n--- Parallel load D = 0101 ---");
+        D      = 4'b0101;
+        LOAD_n = 1'b0;    // assert load (active low)
+        @(posedge CLK);   // on this clock, Q should become 0101
+        LOAD_n = 1'b1;    // deassert load
+
+        // 4) Count a few cycles from the loaded value
+        $display("\n--- Count from loaded value (5) ---");
+        repeat (6) @(posedge CLK);
+
+        // 5) Done
+        $display("\n--- Testbench finished ---");
+        #20;
+        $finish;
+    end
+
+    // Monitor everything on every change
+    initial begin
+        $display(" time  CLK CLR_n LOAD_n ENP ENT |   D    Q  CARRY");
+        $monitor("%4t   %b    %b      %b    %b   %b | %04b %04b   %b",
+                 $time, CLK, CLR_n, LOAD_n, ENP, ENT, D,   Q,   CARRY);
+    end
+
+endmodule
