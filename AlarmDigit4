@@ -1,0 +1,28 @@
+`timescale 1ns / 1ps
+// Stores a 4-bit alarm digit and compares it to the current digit.
+// Screwed up with the naming convention
+module AlarmDigit4 (
+    input wire CLK,
+    input wire RST, // active-low reset
+    input wire Enable, // 1 when we are writing a NEW alarm time
+    input wire [3:0] new_digit, // new alarm digit (H1_A, H0_A, ...)
+    input wire [3:0] current_digit,// current time digit from clock
+     output reg  [3:0] alarm_digit, //Set Alarm Time
+    output wire match // 1 when stored digit == current_digit
+);
+
+// stored alarm digit
+    reg [3:0] stored_digit;
+    // Storage flip-flop (Enable controls "write new alarm time")
+    always @(posedge CLK or negedge RST) begin
+        if (!RST)
+            stored_digit <= 4'b0000; // If RST is low, prepare to reset to 0000, reset alarm digit
+        else if (Enable) //If given new Alarm Time is valid
+            stored_digit <= new_digit; // capture new alarm digit
+        // else: hold previous stored_digit
+    end
+
+    // Compare stored vs current digit (all 4 bits must match)
+    assign match = (stored_digit == current_digit);
+
+endmodule
