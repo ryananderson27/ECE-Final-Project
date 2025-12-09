@@ -16,7 +16,7 @@ module AlarmDigit4 (
     // Storage flip-flop (Enable controls "write new alarm time")
     always @(posedge CLK or negedge RST) begin
         if (!RST)
-            stored_digit <= 4'b0000; // If RST is low, prepare to reset to 0000, reset alarm digit
+            stored_digit <= 4'b1111; // If RST is low, prepare to reset to 1111, reset alarm digit
         else if (Enable) //If given new Alarm Time is valid
             stored_digit <= new_digit; // capture new alarm digit
         // else: hold previous stored_digit
